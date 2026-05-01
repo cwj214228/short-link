@@ -18,8 +18,8 @@ export interface LinkListResponse {
 }
 
 export const linksApi = {
-  list: (page = 1, limit = 20) =>
-    api.get<LinkListResponse>("/links", { params: { page, limit } }),
+  list: (page = 1, limit = 10, search?: string) =>
+    api.get<LinkListResponse>("/links", { params: { page, limit, search } }),
   create: (data: { url: string; expires_at?: string }) =>
     api.post<LinkResponse>("/links", data),
   get: (slug: string) => api.get<LinkResponse>(`/links/${slug}`),

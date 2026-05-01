@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from datetime import datetime
@@ -51,19 +52,26 @@ async def create_link(
 @router.get("", response_model=LinkListResponse)
 async def list_links(
     page: int = 1,
-    limit: int = 20,
+    limit: int = 10,
+    search: str | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     offset = (page - 1) * limit
-    count_result = await db.execute(
-        select(func.count(Link.id)).where(Link.user_id == user.id)
-    )
+
+    base_query = select(Link).where(Link.user_id == user.id)
+    count_query = select(func.count(Link.id)).where(Link.user_id == user.id)
+
+    if search:
+        search_pattern = f"%{search}%"
+        base_query = base_query.where(Link.url.like(search_pattern))
+        count_query = count_query.where(Link.url.like(search_pattern))
+
+    count_result = await db.execute(count_query)
     total = count_result.scalar() or 0
 
     result = await db.execute(
-        select(Link)
-        .where(Link.user_id == user.id)
+        base_query
         .offset(offset)
         .limit(limit)
         .order_by(Link.created_at.desc())
@@ -189,7 +197,6 @@ async def batch_update(
 @router.get("/redirect/{slug}")
 async def redirect_to_url(
     slug: str,
-    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Link).where(Link.slug == slug))
@@ -200,5 +207,4 @@ async def redirect_to_url(
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Link has expired")
     link.click_count += 1
     await db.commit()
-    response.headers["Location"] = link.url
-    return response
+    return RedirectResponse(url=link.url, status_code=302)
